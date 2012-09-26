@@ -110,6 +110,81 @@ var handle_request = function(that, request, response, type) {
   });
 }
 
+function binary_to_ascii_dump(buf, bytesPerLine) {
+  var bpl = bytesPerLine || 64;
+  var len = buf.length;
+  var offset = 0;
+  var str = '';
+  while (offset < len) {
+    for (i = 0; i < bpl && offset < len; i++) {
+      byte = buf[offset];
+      if (byte >= 0x20 && byte <= 0x7e) {
+        str = str + String.fromCharCode(byte);
+      } else {
+        str = str + '.';
+      }
+      offset++;
+    }    
+    str = str + "\n";
+  }
+  return str;
+}
+
+function handle_connect(that, request, socket, head) {
+  var components = request.url.split(':');
+  var hostname = components[0];
+  var port = components[1] || 80;
+  var proxy = net.createConnection(port, hostname);
+  console.log("created new proxy socket");
+  
+
+  proxy.on('connect', function() {
+    socket.write( "HTTP/1.0 200 Connection established\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n"); 
+  });
+
+  // connect pipes
+  proxy.on( 'data', function(d) {
+    console.log("proxy sending " + d.length + " bytes");
+    socket.write(d);
+  });
+  
+  socket.on('data', function(d) {
+    console.log("socket sending " + d.length + " bytes");
+    console.log(binary_to_ascii_dump(d));
+    try { proxy.write(d) }
+      catch(err) {
+        console.log("Error on tunnel socket: " + err);
+      }
+  });
+
+  proxy.on( 'end',  function() {
+    socket.end();
+  });
+  
+  socket.on('end',  function() {
+    proxy.end();
+  });
+
+  proxy.on( 'close',function(had_error) {
+    console.log("proxy close event, had_error: " + had_error)
+    socket.end();
+  });
+  
+  socket.on('close',function(had_error) {
+    console.log("socket close event, had_error: " + had_error)    
+    proxy.end();
+  });
+
+  proxy.on( 'error',function(err) {
+    console.log("proxy error event: " + err)
+    socket.end();
+  });
+  
+  socket.on('error',function(err) {
+    console.log("socket error event: " + err)
+    proxy.end();
+  });
+}
 
 module.exports = function(proxy_options, processor_class) {
   this.options = process_options(proxy_options);
@@ -134,6 +209,10 @@ module.exports = function(proxy_options, processor_class) {
 
   var server = http.createServer(function(request, response) {
     handle_request(that, request, response, "http");
+  });
+
+  server.addListener('connect', function(request, socket, head) {
+    handle_connect(that, request, socket, head);
   });
 
   // Handle connect request (for https)
