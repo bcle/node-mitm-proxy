@@ -132,64 +132,45 @@ function binary_to_ascii_dump(buf, bytesPerLine) {
 }
 
 function handle_connect_https(that, request, socket, hostname, port) {
-  var options = { host: hostname, port: port, path: '/', method: 'HEAD' };
-  var req = https.request(options, function httpsOnResponse(resp) {
+  
+  // Ping the remote server to obtain its certificate
+  var pingOptions = { host: hostname, port: port, path: '/', method: 'HEAD' };
+  var ping = https.request(pingOptions, onPingResponse);
+  ping.end();
+  ping.on('error', function onPingError(e) {
+    console.error(e);
+    socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");     
+  });  
+
+  function onPingResponse(resp) {
     var msg;
-    console.log ("HTTPS response code: " + resp.statusCode);
+    console.log ("Ping response code: " + resp.statusCode);
     if (resp.statusCode != 200) {
       msg = "HTTP/1.0 " + resp.statusCode + " Error\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n";
       socket.write(msg); 
       return;
     }
-    var srvCert = req.socket.getPeerCertificate();
+    var srvCert = ping.socket.getPeerCertificate();
     console.log("Server cert: " + util.inspect(srvCert));
-    /*
-    msg = "HTTP/1.0 200 OK\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n";
-    socket.write(msg);
-    */
     
     var opts = {
         key: fs.readFileSync('/devel/tmp/eng-key.pem', 'utf8'),
         cert: fs.readFileSync('/devel/tmp/eng-cert.pem', 'utf8')
     };
 
-    var https_srv = https.createServer(opts, function onReqFromApp(reqFromApp, respToApp) {
-      console.log('Received initial request from app: ' + util.inspect(reqFromApp));
-      console.log('Beginning to buffer data');
-      reqFromApp.setEncoding('utf8');
-      var body = null;
-      reqFromApp.on('data', function onReqFromAppData(chunk) {
-        console.log('Received chunk from app: ' + chunk);
-        body = body? body + chunk : chunk;
-      });
-      reqFromApp.on('end', function onReqFromAppEnd() {
-        console.log('Received body from app: ' + body);
-        var parsedUrl = url.parse(reqFromApp.url);
-        var href = parsedUrl.href;
-        remoteOpts = { host: hostname, port: port, path: href, headers: reqFromApp.headers, method: reqFromApp.method };
-        console.log('Forwarding to remote server with options: ' + util.inspect(remoteOpts));
-        var reqToRemote = https.request(remoteOpts, function onRespFromRemote(respFromRemote) {
-          console.log('Received initial response from remote server: ' + util.inspect(respFromRemote));
-          respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
-          respFromRemote.on('data', function onRespFromRemoteData(chunk) {
-            console.log('Transferring chunk from remote to app');
-            respToApp.write(chunk);
-          });
-          respFromRemote.on('end', function onRespFromRemoteEnd() {
-            console.log('Ending response to app');            
-            respToApp.end();
-          });
-        });
-        reqToRemote.end(body);
-      });      
-    });
-
+    var https_srv = https.createServer(opts);
     https_srv.on('error', function() {
       sys.log("error on https server?")
     });
 
-    https_srv.listen(0);
-    https_srv.on('listening', function onHttpsListening() {
+    https_srv.on('listening', onHttpsListening);
+    https_srv.on('request', onReqFromApp);
+    https_srv.listen(0); // bind to ephemeral port
+
+    /*
+     * When our local https proxy is ready, bridge the app socket to it.
+     */
+    function onHttpsListening() {
       addr = https_srv.address();
       console.log('https server listening on: ' + util.inspect(addr));
       var bridge = net.createConnection(addr.port, 'localhost');
@@ -210,14 +191,50 @@ function handle_connect_https(that, request, socket, hostname, port) {
 
       bridge.on( 'error',function()  { socket.end()      });
       socket.on('error',function()  { bridge.end()       });
-    });
-  });
-  
-  req.end();
-  req.on('error', function httpsRequestError(e) {
-    console.error(e);
-    socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");     
-  });  
+    }
+    
+    /*
+     * Handle application requests
+     */
+    function onReqFromApp(reqFromApp, respToApp) {
+      console.log('Received initial request from app: ' + util.inspect(reqFromApp));
+      console.log('Beginning to buffer data');
+      reqFromApp.setEncoding('utf8');      
+      reqFromApp.on('data', onReqFromAppData);
+      reqFromApp.on('end', onReqFromAppEnd);
+      var body = null;
+
+      // Buffer app request data
+      function onReqFromAppData(chunk) {
+        console.log('Received chunk from app: ' + chunk);
+        body = body? body + chunk : chunk;
+      }
+      
+      // When full app request is received, forward to remote server
+      function onReqFromAppEnd() {
+        console.log('Received body from app: ' + body);
+        var parsedUrl = url.parse(reqFromApp.url);
+        var href = parsedUrl.href;
+        remoteOpts = { host: hostname, port: port, path: href, headers: reqFromApp.headers, method: reqFromApp.method };
+        console.log('Forwarding to remote server with options: ' + util.inspect(remoteOpts));
+        var reqToRemote = https.request(remoteOpts, onRespFromRemote);
+        reqToRemote.end(body);
+
+        function onRespFromRemote(respFromRemote) {
+          console.log('Received initial response from remote server: ' + util.inspect(respFromRemote));
+          respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
+          respFromRemote.on('data', function onRespFromRemoteData(chunk) {
+            console.log('Transferring chunk from remote to app, bytes: ' + chunk.length);
+            respToApp.write(chunk);
+          });
+          respFromRemote.on('end', function onRespFromRemoteEnd() {
+            console.log('Ending response to app');            
+            respToApp.end();
+          });
+        }      // onRespFromRemote
+      }      // onReqFromAppEnd
+    }      // onReqFromApp
+  }      // onPingResponse
 }
 
 function handle_connect(that, request, socket, head) {
