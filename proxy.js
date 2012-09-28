@@ -136,7 +136,9 @@ function handle_connect_https(that, socket, req) {
   
   // Ping the remote server with a HEAD request to obtain its certificate
   var remoteHostName = req.url;
-  var pingOptions = { url: 'https://'+remoteHostName, method: 'HEAD' };
+  var pingOptions = { url: 'https://'+remoteHostName,
+                      proxy: that.options.externalProxy,
+                      method: 'HEAD' };
   console.log("Pinging remote with options: " + util.inspect(pingOptions));  
   var ping = request(pingOptions, onPingResponse);
   
@@ -210,6 +212,8 @@ function handle_connect_https(that, socket, req) {
         var remoteOpts = { url: 'https://' + remoteHostName + reqFromApp.url,
                            method: reqFromApp.method,
                            headers: reqFromApp.headers,
+                           proxy: that.options.externalProxy,
+                           encoding: null, // we want binary
                            body: body };
 
         console.log('Forwarding to remote server with options: ' + util.inspect(remoteOpts));
@@ -221,9 +225,14 @@ function handle_connect_https(that, socket, req) {
             respToApp.writeHead(500, 'Internal error');
             return;
           }
-          // console.log('Received response from remote server: ' + util.inspect(respFromRemote));
+          console.log('Received response from remote server. Status code: ' + respFromRemote.statusCode +
+                      ' Headers: ' + util.inspect(respFromRemote.headers));
           respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
-          respToApp.write(bodyFromRemote);
+          if (bodyFromRemote) {
+            console.log('Body length: ', bodyFromRemote.length);
+            var ret = respToApp.write(bodyFromRemote);
+            console.log('write(body) returned: ', ret);
+          }
           respToApp.end();
         }      // onRespFromRemote
       }      // onReqFromAppEnd
