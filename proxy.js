@@ -9,6 +9,7 @@ var https = require('https')
   , EE    = require('events').EventEmitter
   , pw    = require(path.join(__dirname, 'lib', 'proxy_writter.js'))
   , util  = require('util')
+  , request = require('request')
 
 var process_options = function(proxy_options) {
   var options = proxy_options || {}
@@ -31,10 +32,10 @@ var Processor = function(proc) {
   sys.inherits(this.processor, EE);
 }
 
-var process_url = function(request, type, processor) {
-  var req_url = url.parse(request.url, true);
+var process_url = function(req, type, processor) {
+  var req_url = url.parse(req.url, true);
   if(!req_url.protocol) req_url.protocol = type + ":";
-  if(!req_url.hostname) req_url.hostname = request.headers.host;
+  if(!req_url.hostname) req_url.hostname = req.headers.host;
 
   if(processor && processor.methods.url_rewrite) {
     req_url = processor.methods.url_rewrite(req_url) || req_url;
@@ -43,14 +44,14 @@ var process_url = function(request, type, processor) {
   return req_url;
 }
 
-var handle_request = function(that, request, response, type) {
+var handle_request = function(that, req, response, type) {
   var processor = that.processor_class ? new that.processor_class.processor() : null;
-  var req_url   = process_url(request, type, processor);
+  var req_url   = process_url(req, type, processor);
   var hostname  = req_url.hostname;
   var pathname  = req_url.pathname + ( req_url.search || "");
   var proxy_writter;
 
-  if(processor) processor.emit('request', request, req_url);
+  if(processor) processor.emit('request', req, req_url);
 
   if(that.options.verbose) console.log(type.blue + " proxying to " +  url.format(req_url).green);
   if(that.options.proxy_write) proxy_writter = new pw(hostname, pathname)
@@ -59,8 +60,8 @@ var handle_request = function(that, request, response, type) {
       host: hostname
     , port: req_url.port || (type == "http" ? 80 : 443)
     , path: pathname
-    , headers: request.headers
-    , method: request.method
+    , headers: req.headers
+    , method: req.method
   }
 
   var proxy_request = (req_url.protocol == "https:" ? https : http).request(request_options, function(proxy_response) {
@@ -91,22 +92,22 @@ var handle_request = function(that, request, response, type) {
     response.end(); 
   })
 
-  request.on('data', function(d) {
+  req.on('data', function(d) {
     proxy_request.write(d, 'binary');
     if(processor) processor.emit("request_data", d);
   });
 
-  request.on('end', function() {
+  req.on('end', function() {
     proxy_request.end();
     if(processor) processor.emit("request_end");
   });
 
-  request.on('close', function() {
+  req.on('close', function() {
     if(processor) processor.emit("request_close");
     proxy_request.connection.end();
   })
 
-  request.on('error', function(exception) { 
+  req.on('error', function(exception) { 
     response.end(); 
   });
 }
@@ -131,28 +132,31 @@ function binary_to_ascii_dump(buf, bytesPerLine) {
   return str;
 }
 
-function handle_connect_https(that, request, socket, hostname, port) {
+function handle_connect_https(that, socket, req) {
   
-  // Ping the remote server to obtain its certificate
-  var pingOptions = { host: hostname, port: port, path: '/', method: 'HEAD' };
-  var ping = https.request(pingOptions, onPingResponse);
-  ping.end();
-  ping.on('error', function onPingError(e) {
-    console.error(e);
-    socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");     
-  });  
-
-  function onPingResponse(resp) {
+  // Ping the remote server with a HEAD request to obtain its certificate
+  var remoteHostName = req.url;
+  var pingOptions = { url: 'https://'+remoteHostName, method: 'HEAD' };
+  console.log("Pinging remote with options: " + util.inspect(pingOptions));  
+  var ping = request(pingOptions, onPingResponse);
+  
+  function onPingResponse(err, resp, body) {
+    if (err) {
+      console.error('Ping error: ' + err);
+      socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");
+      return;
+    }
     var msg;
-    console.log ("Ping response code: " + resp.statusCode);
+    console.log ("Ping response code: " + resp.statusCode);    
     if (resp.statusCode != 200) {
       msg = "HTTP/1.0 " + resp.statusCode + " Error\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n";
       socket.write(msg); 
       return;
     }
-    var srvCert = ping.socket.getPeerCertificate();
-    console.log("Server cert: " + util.inspect(srvCert));
+    //console.log("Ping object: " + util.inspect(ping));
     
+    var srvCert = ping.req.socket.getPeerCertificate();
+    console.log("Server cert: " + util.inspect(srvCert));
     var opts = {
         key: fs.readFileSync('/devel/tmp/eng-key.pem', 'utf8'),
         cert: fs.readFileSync('/devel/tmp/eng-cert.pem', 'utf8')
@@ -176,21 +180,10 @@ function handle_connect_https(that, request, socket, hostname, port) {
       var bridge = net.createConnection(addr.port, 'localhost');
 
       bridge.on('connect', function() {
-        socket.write( "HTTP/1.0 200 Connection established\r\nbridge-agent: Netscape-bridge/1.1\r\n\r\n"); 
+        socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n"); 
       });
-
-      // connect pipes
-      bridge.on( 'data', function(d) { socket.write(d)   });
-      socket.on('data', function(d) { try { bridge.write(d) } catch(err) {}});
-
-      bridge.on( 'end',  function()  { socket.end()      });
-      socket.on('end',  function()  { bridge.end()       });
-
-      bridge.on( 'close',function()  { socket.end()      });
-      socket.on('close',function()  { bridge.end()       });
-
-      bridge.on( 'error',function()  { socket.end()      });
-      socket.on('error',function()  { bridge.end()       });
+      socket.pipe(bridge);
+      bridge.pipe(socket);
     }
     
     /*
@@ -213,38 +206,39 @@ function handle_connect_https(that, request, socket, hostname, port) {
       // When full app request is received, forward to remote server
       function onReqFromAppEnd() {
         console.log('Received body from app: ' + body);
-        var parsedUrl = url.parse(reqFromApp.url);
-        var href = parsedUrl.href;
-        remoteOpts = { host: hostname, port: port, path: href, headers: reqFromApp.headers, method: reqFromApp.method };
-        console.log('Forwarding to remote server with options: ' + util.inspect(remoteOpts));
-        var reqToRemote = https.request(remoteOpts, onRespFromRemote);
-        reqToRemote.end(body);
+        console.log('Request URL: ' + reqFromApp.url);        
+        var remoteOpts = { url: 'https://' + remoteHostName + reqFromApp.url,
+                           method: reqFromApp.method,
+                           headers: reqFromApp.headers,
+                           body: body };
 
-        function onRespFromRemote(respFromRemote) {
-          console.log('Received initial response from remote server: ' + util.inspect(respFromRemote));
+        console.log('Forwarding to remote server with options: ' + util.inspect(remoteOpts));
+        request(remoteOpts, onRespFromRemote);
+
+        function onRespFromRemote(err, respFromRemote, bodyFromRemote) {
+          if (err) {
+            console.log("Error sending request to remote: " + err);
+            respToApp.writeHead(500, 'Internal error');
+            return;
+          }
+          // console.log('Received response from remote server: ' + util.inspect(respFromRemote));
           respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
-          respFromRemote.on('data', function onRespFromRemoteData(chunk) {
-            console.log('Transferring chunk from remote to app, bytes: ' + chunk.length);
-            respToApp.write(chunk);
-          });
-          respFromRemote.on('end', function onRespFromRemoteEnd() {
-            console.log('Ending response to app');            
-            respToApp.end();
-          });
+          respToApp.write(bodyFromRemote);
+          respToApp.end();
         }      // onRespFromRemote
       }      // onReqFromAppEnd
     }      // onReqFromApp
   }      // onPingResponse
 }
 
-function handle_connect(that, request, socket, head) {
-  var components = request.url.split(':');
+function handle_connect(that, req, socket, head) {
+  var components = req.url.split(':');
   var hostname = components[0];
   var port = components[1] || 80;
   var proxy;
     
   if (port == 443) {
-    return handle_connect_https(that, request, socket, hostname, port);
+    return handle_connect_https(that, socket, req);
   }
   proxy = net.createConnection(port, hostname);
   
@@ -308,8 +302,8 @@ module.exports = function(proxy_options, processor_class) {
     cert: fs.readFileSync(this.options.cert_path, 'utf8')
   };
 
-  var mitm_server = https.createServer(https_opts, function (request, response) {
-    handle_request(that, request, response, "https");
+  var mitm_server = https.createServer(https_opts, function (req, response) {
+    handle_request(that, req, response, "https");
   });
 
   mitm_server.on('error', function() {
@@ -319,12 +313,12 @@ module.exports = function(proxy_options, processor_class) {
   mitm_server.listen(this.options.mitm_port);
   if(this.options.verbose) console.log('https man-in-the-middle proxy server'.blue + ' started '.green.bold + 'on port '.blue + (""+this.options.mitm_port).yellow);
 
-  var server = http.createServer(function(request, response) {
-    handle_request(that, request, response, "http");
+  var server = http.createServer(function(req, response) {
+    handle_request(that, req, response, "http");
   });
 
-  server.on('connect', function(request, socket, head) {
-    handle_connect(that, request, socket, head);
+  server.on('connect', function(req, socket, head) {
+    handle_connect(that, req, socket, head);
   });
 
   // Handle connect request (for https)
