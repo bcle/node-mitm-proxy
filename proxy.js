@@ -171,21 +171,14 @@ function handle_connect_https(that, socket, req) {
 
     https_srv.on('listening', onHttpsListening);
     https_srv.on('request', onReqFromApp);
-    https_srv.listen(0); // bind to ephemeral port
+    https_srv.listen(0); // bind to ephemeral port, we actually never connect to it
 
     /*
      * When our local https proxy is ready, bridge the app socket to it.
      */
     function onHttpsListening() {
-      addr = https_srv.address();
-      console.log('https server listening on: ' + util.inspect(addr));
-      var bridge = net.createConnection(addr.port, 'localhost');
-
-      bridge.on('connect', function() {
-        socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n"); 
-      });
-      socket.pipe(bridge);
-      bridge.pipe(socket);
+      https_srv.emit('connection', socket);
+      socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n");
     }
     
     /*
