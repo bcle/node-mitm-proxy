@@ -169,17 +169,9 @@ function handle_connect_https(that, socket, req) {
       sys.log("error on https server?")
     });
 
-    https_srv.on('listening', onHttpsListening);
     https_srv.on('request', onReqFromApp);
-    https_srv.listen(0); // bind to ephemeral port, we actually never connect to it
-
-    /*
-     * When our local https proxy is ready, bridge the app socket to it.
-     */
-    function onHttpsListening() {
-      https_srv.emit('connection', socket);
-      socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n");
-    }
+    https_srv.emit('connection', socket);
+    socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n");
     
     /*
      * Handle application requests
