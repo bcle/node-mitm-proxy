@@ -10,10 +10,10 @@ var srvCache = {};
 /*
  * Lookup and return an https server for the given hostname.
  * options: global options, including external proxy
- * remoteHostName: fully qualified remote host name
+ * remoteHostName: remote host name of the form 'host[:port]'
  * cb: a callback of the form cb(err, https_srv), where the second paramter is an https instance
  */
-exports.lookup = function (options, remoteHostName, cb) {
+exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   var srv = srvCache[remoteHostName];
   if (srv) {
     return process.nextTick(function () { cb(null, srv); });
@@ -49,6 +49,11 @@ exports.lookup = function (options, remoteHostName, cb) {
       // Return a new https server
       var opts = { key: keyBuf,  cert: certBuf };
       var https_srv = https.createServer(opts);
+      https_srv.on('error', function() {
+        sys.log("error on https server?")
+      });
+      https_srv.on('request', appRequestCb);
+      
       srvCache[remoteHostName] = https_srv;
       cb(null, https_srv);
     }    
