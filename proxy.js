@@ -10,6 +10,7 @@ var https = require('https')
   , pw    = require(path.join(__dirname, 'lib', 'proxy_writter.js'))
   , util  = require('util')
   , request = require('request')
+  , https_cache = require('./https_cache.js')
 
 var process_options = function(proxy_options) {
   var options = proxy_options || {}
@@ -134,41 +135,18 @@ function binary_to_ascii_dump(buf, bytesPerLine) {
 
 function handle_connect_https(that, socket, req) {
   
-  // Ping the remote server with a HEAD request to obtain its certificate
   var remoteHostName = req.url;
-  var pingOptions = { url: 'https://'+remoteHostName,
-                      proxy: that.options.externalProxy,
-                      method: 'HEAD' };
-  console.log("Pinging remote with options: " + util.inspect(pingOptions));  
-  var ping = request(pingOptions, onPingResponse);
-  
-  function onPingResponse(err, resp, body) {
+  https_cache.lookup(that.options, remoteHostName, function cacheLookupCb(err, https_srv) {
+    
     if (err) {
       console.error('Ping error: ' + err);
       socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");
       return;
     }
-    var msg;
-    console.log ("Ping response code: " + resp.statusCode);    
-    if (resp.statusCode != 200) {
-      msg = "HTTP/1.0 " + resp.statusCode + " Error\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n";
-      socket.write(msg); 
-      return;
-    }
-    //console.log("Ping object: " + util.inspect(ping));
     
-    var srvCert = ping.req.socket.getPeerCertificate();
-    console.log("Server cert: " + util.inspect(srvCert));
-    var opts = {
-        key: fs.readFileSync('/devel/tmp/eng-key.pem', 'utf8'),
-        cert: fs.readFileSync('/devel/tmp/eng-cert.pem', 'utf8')
-    };
-
-    var https_srv = https.createServer(opts);
     https_srv.on('error', function() {
       sys.log("error on https server?")
     });
-
     https_srv.on('request', onReqFromApp);
     https_srv.emit('connection', socket);
     socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n");
@@ -222,8 +200,8 @@ function handle_connect_https(that, socket, req) {
         }      // onRespFromRemote
       }      // onReqFromAppEnd
     }      // onReqFromApp
-  }      // onPingResponse
-}
+  });    // cacheLookupCb
+}      // handle_connect_https
 
 function handle_connect(that, req, socket, head) {
   var components = req.url.split(':');
