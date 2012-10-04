@@ -59,21 +59,21 @@ function handle_request(that, reqFromApp, respToApp) {
   // console.log('Received request from app: ' + util.inspect(info));
   console.log('\nReceived request from app. Url: ' + info.url + '  Method: ' + info.method);
 
-  reqFromApp.setEncoding('utf8');      
   reqFromApp.on('data', onReqFromAppData);
   reqFromApp.on('end', onReqFromAppEnd);
-  var body = null;
+  var chunks = [];
 
   // Buffer app request data
   function onReqFromAppData(chunk) {
     console.log('Received chunk from app: ' + chunk);
-    body = body? body + chunk : chunk;
+    chunks.push(chunk);
   }
   
   // When full app request is received, forward to remote server
   function onReqFromAppEnd() {
+    var body = chunks.length? Buffer.concat(chunks) : null; 
     console.log('\nReceived body from app: ' + body);
-    console.log('Request URL: ' + reqFromApp.url);        
+    console.log('Request URL: ' + reqFromApp.url);
     var remoteOpts = { url: reqFromApp.url,
                        method: reqFromApp.method,
                        headers: reqFromApp.headers,
