@@ -78,6 +78,7 @@ function handle_request(that, reqFromApp, respToApp) {
                        method: reqFromApp.method,
                        headers: reqFromApp.headers,
                        proxy: that.options.externalProxy,
+                       followRedirect: false,
                        encoding: null, // we want binary
                        body: body };
 
@@ -86,11 +87,11 @@ function handle_request(that, reqFromApp, respToApp) {
 
     function onRespFromRemote(err, respFromRemote, bodyFromRemote) {
       if (err) {
-        console.log("Error sending request to remote: " + err);
+        console.log("\nError sending request to remote: " + err);
         respToApp.writeHead(500, 'Internal error');
         return;
       }
-      console.log('Received response from remote server. Status code: ' + respFromRemote.statusCode +
+      console.log('\nReceived response from ' + reqFromApp.url + ' with status code: ' + respFromRemote.statusCode +
                   '\n Headers: ' + util.inspect(respFromRemote.headers));
       respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
       if (bodyFromRemote) {

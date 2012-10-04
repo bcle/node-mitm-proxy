@@ -8,11 +8,6 @@ var events = require('events');
 
 var certCache = {};
 
-function CertOpts(keyBuf, certBuf) {
-  this.key = keyBuf;
-  this.cert = certBuf;
-}
-
 function create_server(certOpts, appRequestCb) {
   var https_srv = https.createServer(certOpts);
   https_srv.on('error', function() {
@@ -24,13 +19,13 @@ function create_server(certOpts, appRequestCb) {
 
 function queue_callback(emitter, remoteHostName, cb, appRequestCb) {
   console.log('Queuing cert lookup for ' + remoteHostName);
-  emitter.on('certDone', function onCertDone(err, certOpts) {
+  emitter.on('certDone', function onCertDone(err, server) {
     if (err) {
       console.log('Dequeuing lookup error for ' + remoteHostName);
       return cb(err);
     }
     console.log('Dequeuing cert lookup for ' + remoteHostName);
-    cb(null, create_server(certOpts, appRequestCb));
+    cb(null, server);
   });  
 }
 
@@ -42,13 +37,14 @@ function queue_callback(emitter, remoteHostName, cb, appRequestCb) {
  */
 exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   var entry = certCache[remoteHostName];
-  if (entry) {
-    if (entry instanceof events.EventEmitter) {
-      return queue_callback(entry, remoteHostName, cb, appRequestCb);
+  if (entry) {       
+    if (entry instanceof https.Server) {
+      // The entry is an https server already in the cache
+      console.log('Cache hit for ' + remoteHostName);    
+      return process.nextTick(function () { cb(null, entry); });      
     }
-    // The entry is a CertOpts object already in the cache
-    console.log('Cache hit for ' + remoteHostName);    
-    return process.nextTick(function () { cb(null, create_server(entry, appRequestCb)); });
+    // Ping in progress. The entry is a plain emitter.
+    return queue_callback(entry, remoteHostName, cb, appRequestCb);
   }
   // Use an event emitter to queue future requests while we're still waiting for the cert options
   var emitter = new events.EventEmitter();
@@ -58,19 +54,24 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   var url = 'https://' + remoteHostName;
   var pingOptions = { url: url,
                       proxy: options.externalProxy,
+                      followRedirect: false,
                       method: 'HEAD' };
   
   console.log("Pinging remote with options: " + util.inspect(pingOptions));  
   var ping = request(pingOptions, onPingResponse);
   
   function onPingResponse(err, resp, body) {
-    if (err)
+    if (err) {
+      delete certCache[remoteHostName];      
       return emitter.emit('certDone', err);
-    
+    }
     console.log ("\nPing response code for " + url + " is " + resp.statusCode);    
     //console.log("Ping object: " + util.inspect(ping));
     
     if (!ping.req.socket.getPeerCertificate) {
+      console.log('No certificate for ' + url);
+      console.log('Ping request: ' + util.inspect(ping));
+      delete certCache[remoteHostName];      
       return emitter.emit('certDone', "Remote server " + url + " did not present a certificate");    
     }
     
@@ -89,10 +90,11 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
         delete certCache[remoteHostName];
         return  emitter.emit('certDone', err);
       }
-      // Replace the cache entry with the certificate info, then emit event to finish
-      opts = new CertOpts(keyBuf, certBuf);
-      certCache[remoteHostName] = opts;
-      emitter.emit('certDone', null, opts);
+      // Replace the cache entry with the server, then emit event to finish
+      var opts = { key: keyBuf, cert: certBuf };
+      var server = create_server(opts, appRequestCb);
+      certCache[remoteHostName] = server;
+      emitter.emit('certDone', null, server);
     }    
   }    
 }
