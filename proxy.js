@@ -53,10 +53,11 @@ var process_url = function(req, type, processor) {
 
 //------------------------------------------------------------------------------------------------
 
-var handle_request = function(that, reqFromApp, respToApp) {
+function handle_request(that, reqFromApp, respToApp) {
 
   var info = { method: reqFromApp.method, url: reqFromApp.url, headers: reqFromApp.headers };
-  console.log('Received request from app: ' + util.inspect(info));
+  // console.log('Received request from app: ' + util.inspect(info));
+  console.log('\nReceived request from app. Url: ' + info.url + '  Method: ' + info.method);
 
   reqFromApp.setEncoding('utf8');      
   reqFromApp.on('data', onReqFromAppData);
@@ -71,7 +72,7 @@ var handle_request = function(that, reqFromApp, respToApp) {
   
   // When full app request is received, forward to remote server
   function onReqFromAppEnd() {
-    console.log('Received body from app: ' + body);
+    console.log('\nReceived body from app: ' + body);
     console.log('Request URL: ' + reqFromApp.url);        
     var remoteOpts = { url: reqFromApp.url,
                        method: reqFromApp.method,
@@ -176,7 +177,7 @@ module.exports = function(proxy_options, processor_class) {
 
   var that = this;
   var server = http.createServer(function(req, response) {
-    console.log('----------------------------------');
+    //console.log('----------------------------------');
     handle_request(that, req, response);
   });
 
