@@ -136,7 +136,7 @@ function handle_connect_https(that, socket, req) {
       console.error('Ping error: ' + err);
       socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");
       return;
-    }    
+    } 
     https_srv.emit('connection', socket);
     socket.write( "HTTP/1.0 200 Connection established\r\nproxy-agent: Netscape-proxy/1.1\r\n\r\n");    
   }

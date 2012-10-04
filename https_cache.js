@@ -19,7 +19,8 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
     return process.nextTick(function () { cb(null, srv); });
   }
   
-  var pingOptions = { url: 'https://'+remoteHostName,
+  url = 'https://' + remoteHostName;
+  var pingOptions = { url: url,
                       proxy: options.externalProxy,
                       method: 'HEAD' };
   
@@ -29,14 +30,17 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   function onPingResponse(err, resp, body) {
     if (err)
       return cb(err);
-    console.log ("Ping response code: " + resp.statusCode);    
-    if (resp.statusCode != 200) {
-      return cb("Ping responded with an http error: " + resp.statusCode);
-    }
+    
+    console.log ("Ping response code for " + url + " is " + resp.statusCode);    
     //console.log("Ping object: " + util.inspect(ping));
     
+    if (!ping.req.socket.getPeerCertificate) {
+      return cb("Remote server " + url + " did not present a certificate");    
+    }
+    
     var srvCert = ping.req.socket.getPeerCertificate();
-    console.log("Server cert: " + util.inspect(srvCert));
+    console.log("Server cert for " + url + " :" );
+    console.log(util.inspect(srvCert));
     
     // Generate a new certificate with the same subject as the remote server's certificate
     cg.generate_cert_buf(remoteHostName, true, srvCert.subject, '/devel/tmp/leb-key.pem',
