@@ -10,6 +10,7 @@
   "keywords" : [ "proxy", "mitm", "http", "https" ],
   "dependencies" : {
     "colors" : ">=0.1.0",
+    "certgen" : ">=0.1.0",
     "request" : ">=2.11.4"
   },
   "repository" : { 
