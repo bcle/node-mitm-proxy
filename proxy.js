@@ -18,10 +18,7 @@ var process_options = function(proxy_options) {
   var options = proxy_options || {}
 
   if(!options.proxy_port)            options.proxy_port       = 8080;
-  if(!options.mitm_port)             options.mitm_port        = 8000;
   if(!options.verbose === false)     options.verbose          = true;
-  if(!options.proxy_write === true)  options.proxy_write      = false;
-  if(!options.proxy_write_path)      options.proxy_write_path = '/tmp/proxy';
   if(!options.key_path)              options.key_path         = path.join(__dirname, 'certs', 'agent2-key.pem')
   if(!options.cert_path)             options.cert_path        = path.join(__dirname, 'certs', 'agent2-cert.pem')
   return options;
@@ -35,20 +32,6 @@ var Processor = function(proc) {
     EE.call(this.methods);
   }
   sys.inherits(this.processor, EE);
-}
-
-//------------------------------------------------------------------------------------------------
-
-var process_url = function(req, type, processor) {
-  var req_url = url.parse(req.url, true);
-  if(!req_url.protocol) req_url.protocol = type + ":";
-  if(!req_url.hostname) req_url.hostname = req.headers.host;
-
-  if(processor && processor.methods.url_rewrite) {
-    req_url = processor.methods.url_rewrite(req_url) || req_url;
-  }
-
-  return req_url;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -106,28 +89,6 @@ function handle_request(that, reqFromApp, respToApp) {
 
 //------------------------------------------------------------------------------------------------
 
-function binary_to_ascii_dump(buf, bytesPerLine) {
-  var bpl = bytesPerLine || 64;
-  var len = buf.length;
-  var offset = 0;
-  var str = '';
-  while (offset < len) {
-    for (i = 0; i < bpl && offset < len; i++) {
-      byte = buf[offset];
-      if (byte >= 0x20 && byte <= 0x7e) {
-        str = str + String.fromCharCode(byte);
-      } else {
-        str = str + '.';
-      }
-      offset++;
-    }    
-    str = str + "\n";
-  }
-  return str;
-}
-
-//------------------------------------------------------------------------------------------------
-
 function handle_connect_https(that, socket, req) {
   
   var remoteHostName = req.url;
@@ -150,8 +111,7 @@ function handle_connect_https(that, socket, req) {
     reqFromApp.url = 'https://' + remoteHostName + reqFromApp.url;
     handle_request(that, reqFromApp, respToApp);      
   }      
-  
-}      // handle_connect_https
+}
 
 // ------------------------------------------------------------------------------------------------
 
