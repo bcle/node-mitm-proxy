@@ -54,11 +54,13 @@ function handle_request(that, reqFromApp, respToApp) {
         respToApp.writeHead(500, 'Internal error');
         return;
       }
-      log.info('Received response with status code %d from URL: %s', respFromRemote.statusCode, reqFromApp.url);
+      log.info('Response: status code %d body length %d URL %s',
+          respFromRemote.statusCode,
+          bodyFromRemote? bodyFromRemote.length : 0,
+          reqFromApp.url);
       log.debug('Response headers: %j', respFromRemote.headers);
       respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
       if (bodyFromRemote) {
-        log.info('Response body length: %d', bodyFromRemote.length);
         var ret = respToApp.write(bodyFromRemote);
         if (!ret) 
           log.warn('write(response body) returned: ' + ret);

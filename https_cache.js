@@ -80,9 +80,9 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
     }
     
     var srvCert = ping.req.socket.getPeerCertificate();
-    log.debug("Server cert for " + url + " :" );
-    log.debug("Subject: " + util.inspect(srvCert.subject));
-    log.debug("Issuer: " + util.inspect(srvCert.issuer));
+    log.debug("Server cert for %s:", url );
+    log.debug("Subject: %j", srvCert.subject);
+    log.debug("Issuer: %j", srvCert.issuer);
         
     // Generate a new certificate with the same subject as the remote server's certificate
     cg.generate_cert_buf(remoteHostName, true, srvCert.subject, options.key_path,
