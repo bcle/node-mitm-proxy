@@ -7,26 +7,31 @@ var cg = require('certgen');
 var events = require('events');
 
 var certCache = {};
+var log = null;
 
 function create_server(certOpts, appRequestCb) {
   var https_srv = https.createServer(certOpts);
   https_srv.on('error', function() {
-    sys.log("error on https server?")
+    log.error("error on https server?")
   });
   https_srv.on('request', appRequestCb);
   return https_srv;
 }
 
 function queue_callback(emitter, remoteHostName, cb, appRequestCb) {
-  console.log('Queuing cert lookup for ' + remoteHostName);
+  log.info('Queuing cert lookup for ' + remoteHostName);
   emitter.on('certDone', function onCertDone(err, server) {
     if (err) {
-      console.log('Dequeuing lookup error for ' + remoteHostName);
+      log.info('Dequeuing lookup error for ' + remoteHostName);
       return cb(err);
     }
-    console.log('Dequeuing cert lookup for ' + remoteHostName);
+    log.info('Dequeuing cert lookup for ' + remoteHostName);
     cb(null, server);
   });  
+}
+
+exports.init = function(logger) {
+  log = logger;
 }
 
 /*
@@ -40,7 +45,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   if (entry) {       
     if (entry instanceof https.Server) {
       // The entry is an https server already in the cache
-      console.log('Cache hit for ' + remoteHostName);    
+      log.info('Cache hit for ' + remoteHostName);    
       return process.nextTick(function () { cb(null, entry); });      
     }
     // Ping in progress. The entry is a plain emitter.
@@ -53,11 +58,11 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   
   var url = 'https://' + remoteHostName;
   var pingOptions = { url: url,
-                      proxy: options.externalProxy,
+                      proxy: options.external_proxy,
                       followRedirect: false,
                       method: 'HEAD' };
   
-  console.log("Pinging remote with options: " + util.inspect(pingOptions));  
+  log.info("Pinging remote with options: %j", pingOptions);  
   var ping = request(pingOptions, onPingResponse);
   
   function onPingResponse(err, resp, body) {
@@ -65,24 +70,23 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
       delete certCache[remoteHostName];      
       return emitter.emit('certDone', err);
     }
-    console.log ("\nPing response code for " + url + " is " + resp.statusCode);    
-    //console.log("Ping object: " + util.inspect(ping));
+    log.info ("Ping response code for %s is %d", url, resp.statusCode);    
     
     if (!ping.req.socket.getPeerCertificate) {
-      console.log('No certificate for ' + url);
-      console.log('Ping request: ' + util.inspect(ping));
+      log.error('No certificate for ' + url);
+      log.error('Ping request: %j', ping);
       delete certCache[remoteHostName];      
       return emitter.emit('certDone', "Remote server " + url + " did not present a certificate");    
     }
     
     var srvCert = ping.req.socket.getPeerCertificate();
-    console.log("Server cert for " + url + " :" );
-    console.log("Subject: " + util.inspect(srvCert.subject));
-    console.log("Issuer: " + util.inspect(srvCert.issuer));
+    log.debug("Server cert for " + url + " :" );
+    log.debug("Subject: " + util.inspect(srvCert.subject));
+    log.debug("Issuer: " + util.inspect(srvCert.issuer));
         
     // Generate a new certificate with the same subject as the remote server's certificate
-    cg.generate_cert_buf(remoteHostName, true, srvCert.subject, '/devel/tmp/leb-key.pem',
-                         '/devel/tmp/leb-cert.pem', genCertCb);
+    cg.generate_cert_buf(remoteHostName, true, srvCert.subject, options.key_path,
+                         options.cert_path, genCertCb);
     
     function genCertCb(err, keyBuf, certBuf) {
       var emitter = certCache[remoteHostName];
