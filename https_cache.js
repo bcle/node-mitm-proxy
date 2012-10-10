@@ -6,7 +6,7 @@ var fs = require('fs');
 var cg = require('certgen');
 var events = require('events');
 
-var certCache = {};
+var srvCache = {};
 var log = null;
 
 function create_server(certOpts, appRequestCb) {
@@ -41,7 +41,7 @@ exports.init = function(logger) {
  * cb: a callback of the form cb(err, https_srv), where the second parameter is an https instance
  */
 exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
-  var entry = certCache[remoteHostName];
+  var entry = srvCache[remoteHostName];
   if (entry) {       
     if (entry instanceof https.Server) {
       // The entry is an https server already in the cache
@@ -54,7 +54,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   // Use an event emitter to queue future requests while we're still waiting for the cert options
   var emitter = new events.EventEmitter();
   queue_callback(emitter, remoteHostName, cb, appRequestCb); // insert ourselves as first listener
-  certCache[remoteHostName] = emitter;
+  srvCache[remoteHostName] = emitter;
   
   var url = 'https://' + remoteHostName;
   var pingOptions = { url: url,
@@ -67,7 +67,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   
   function onPingResponse(err, resp, body) {
     if (err) {
-      delete certCache[remoteHostName];      
+      delete srvCache[remoteHostName];      
       return emitter.emit('certDone', err);
     }
     log.info ("Ping response code for %s is %d", url, resp.statusCode);    
@@ -75,7 +75,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
     if (!ping.req.socket.getPeerCertificate) {
       log.error('No certificate for ' + url);
       log.error('Ping request: %j', ping);
-      delete certCache[remoteHostName];      
+      delete srvCache[remoteHostName];      
       return emitter.emit('certDone', "Remote server " + url + " did not present a certificate");    
     }
     
@@ -89,15 +89,15 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
                          options.cert_path, genCertCb);
     
     function genCertCb(err, keyBuf, certBuf) {
-      var emitter = certCache[remoteHostName];
+      var emitter = srvCache[remoteHostName];
       if (err) {
-        delete certCache[remoteHostName];
+        delete srvCache[remoteHostName];
         return  emitter.emit('certDone', err);
       }
       // Replace the cache entry with the server, then emit event to finish
       var opts = { key: keyBuf, cert: certBuf };
       var server = create_server(opts, appRequestCb);
-      certCache[remoteHostName] = server;
+      srvCache[remoteHostName] = server;
       emitter.emit('certDone', null, server);
     }    
   }    
