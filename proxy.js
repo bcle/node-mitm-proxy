@@ -35,39 +35,68 @@ function handle_request(that, reqFromApp, respToApp) {
     var body = chunks.length? Buffer.concat(chunks) : null; 
     log.info('Received request from app with body length %d for URL: %s',
         body? body.length : 0, reqFromApp.url);
-    var remoteOpts = { url: reqFromApp.url,
-                       method: reqFromApp.method,
-                       headers: reqFromApp.headers,
-                       proxy: that.options.external_proxy,
-                       followRedirect: false,
-                       encoding: null // we want binary
-                     };
-
-    log.debug('Forwarding to remote server with body length %d and options: %j',
-              body? body.length : 0, remoteOpts);
-    remoteOpts.body = body;
-    request(remoteOpts, onRespFromRemote);
-
-    function onRespFromRemote(err, respFromRemote, bodyFromRemote) {
-      if (err) {
-        log.error("Error sending request to remote: " + err);
-        respToApp.writeHead(500, 'Internal error');
-        return;
-      }
-      log.info('Response: status code %d body length %d URL %s',
-          respFromRemote.statusCode,
-          bodyFromRemote? bodyFromRemote.length : 0,
-          reqFromApp.url);
-      log.debug('Response headers: %j', respFromRemote.headers);
-      respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
-      if (bodyFromRemote) {
-        var ret = respToApp.write(bodyFromRemote);
-        if (!ret) 
-          log.warn('write(response body) returned: ' + ret);
-      }
-      respToApp.end();
-    }
+    
+    reqFromApp.body = body;
+    if (that.options.request_filter)
+      that.options.request_filter(reqFromApp, respToApp, function after_request_filter() {
+        forward_to_server(that, reqFromApp, respToApp);
+      });
+    else
+      forward_to_server(that, reqFromApp, respToApp);      
   }  
+}
+
+//------------------------------------------------------------------------------------------------
+
+function forward_to_server(that, reqFromApp, respToApp) {
+  
+  var body = reqFromApp.body;
+  var remoteOpts = { url: reqFromApp.url,
+      method: reqFromApp.method,
+      headers: reqFromApp.headers,
+      proxy: that.options.external_proxy,
+      followRedirect: false,
+      encoding: null // we want binary
+    };
+
+  log.debug('Forwarding to remote server with body length %d and options: %j',
+            body? body.length : 0, remoteOpts);
+  remoteOpts.body = body;
+  request(remoteOpts, onRespFromRemote);
+  
+  function onRespFromRemote(err, respFromRemote, bodyFromRemote) {
+    if (err) {
+      log.error("Error sending request to remote: " + err);
+      respToApp.writeHead(500, 'Internal error');
+      return;
+    }
+    log.info('Response: status code %d body length %d URL %s',
+             respFromRemote.statusCode,
+             bodyFromRemote? bodyFromRemote.length : 0,
+             reqFromApp.url);
+    log.debug('Response headers: %j', respFromRemote.headers);
+    respFromRemote.body = bodyFromRemote;
+    
+    if (that.options.response_filter)
+      that.options.response_filter(reqFromApp, respFromRemote, function after_response_filter() {
+        respond_to_app(respFromRemote, respToApp);
+      });
+    else
+      respond_to_app(respFromRemote, respToApp);    
+  }
+}
+
+//------------------------------------------------------------------------------------------------
+
+function respond_to_app(respFromRemote, respToApp) {
+  var body = respFromRemote.body; 
+  respToApp.writeHead(respFromRemote.statusCode, respFromRemote.headers);
+  if (body) {
+    var ret = respToApp.write(body);
+    if (!ret) 
+      log.warn('write(response body) returned: ' + ret);
+  }
+  respToApp.end();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -114,7 +143,7 @@ function handle_connect(that, req, socket, head) {
 
 //------------------------------------------------------------------------------------------------
 
-var Proxy = function(options, processor_class) {
+var Proxy = function(options) {
   if (options.log_file) {
     log4js.clearAppenders();
     log4js.loadAppender('file');
@@ -124,6 +153,8 @@ var Proxy = function(options, processor_class) {
   log.setLevel(options.log_level);
   https_cache.init(log);
   this.options = options;
+  this.getLogger = function () { return log; }
+  
   var that = this;
   var server = http.createServer(function(req, response) {
     handle_request(that, req, response);
