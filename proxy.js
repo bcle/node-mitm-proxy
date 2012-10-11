@@ -17,8 +17,9 @@ var log = null;
 function handle_request(that, reqFromApp, respToApp) {
 
   var info = { method: reqFromApp.method, url: reqFromApp.url, headers: reqFromApp.headers };
-  log.debug('Received initial request from app. Method: %s  URL: %s', info.method, info.url);
-  log.debug('Request headers: %j', info.headers);
+  log.trace('');
+  log.trace('Received initial request from app. Method: %s  URL: %s', info.method, info.url);
+  log.trace('Request headers: %j', info.headers);
 
   reqFromApp.on('data', onReqFromAppData);
   reqFromApp.on('end', onReqFromAppEnd);
@@ -33,6 +34,7 @@ function handle_request(that, reqFromApp, respToApp) {
   // When full app request is received, forward to remote server
   function onReqFromAppEnd() {
     var body = chunks.length? Buffer.concat(chunks) : null; 
+    log.info('');
     log.info('Received request from app with body length %d for URL: %s',
         body? body.length : 0, reqFromApp.url);
     
@@ -59,6 +61,7 @@ function forward_to_server(that, reqFromApp, respToApp) {
       encoding: null // we want binary
     };
 
+  log.debug('');
   log.debug('Forwarding to remote server with body length %d and options: %j',
             body? body.length : 0, remoteOpts);
   remoteOpts.body = body;
@@ -70,12 +73,13 @@ function forward_to_server(that, reqFromApp, respToApp) {
       respToApp.writeHead(500, 'Internal error');
       return;
     }
+    log.info('');
     log.info('Response: status code %d body length %d URL %s',
              respFromRemote.statusCode,
              bodyFromRemote? bodyFromRemote.length : 0,
              reqFromApp.url);
     log.debug('Response headers: %j', respFromRemote.headers);
-    respFromRemote.body = bodyFromRemote;
+    respFromRemote.body = bodyFromRemote;    
     
     if (that.options.response_filter)
       that.options.response_filter(reqFromApp, respFromRemote, function after_response_filter() {
