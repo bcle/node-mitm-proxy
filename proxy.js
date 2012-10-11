@@ -58,6 +58,7 @@ function forward_to_server(that, reqFromApp, respToApp) {
       headers: reqFromApp.headers,
       proxy: that.options.external_proxy,
       followRedirect: false,
+      jar: false,
       encoding: null // we want binary
     };
 

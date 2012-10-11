@@ -60,6 +60,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   var pingOptions = { url: url,
                       proxy: options.external_proxy,
                       followRedirect: false,
+                      jar: false,
                       method: 'HEAD' };
   
   log.info("Pinging remote with options: %j", pingOptions);  
