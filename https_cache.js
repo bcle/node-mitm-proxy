@@ -86,7 +86,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
     log.debug("Issuer: %j", srvCert.issuer);
         
     // Generate a new certificate with the same subject as the remote server's certificate
-    cg.generate_cert_buf(remoteHostName, true, srvCert.subject, options.key_path,
+    cg.generate_cert_buf(remoteHostName, true, srvCert, options.key_path,
                          options.cert_path, genCertCb);
     
     function genCertCb(err, keyBuf, certBuf) {
