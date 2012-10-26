@@ -182,11 +182,11 @@ var Proxy = function(options) {
 Proxy.getOptionsParser = function () {
   return optionsParser.options({
     proxy_port: { abbr: 'p', full: 'proxy-port', help: 'Default: 8888', default: 8888 },
-    key_path: { abbr: 'k', full: 'key-path', help: 'Path to server private key file (REQUIRED)',
+    key_path: { abbr: 'k', full: 'key-path', help: 'Path to server private key file',
                 default: path.join(__dirname, 'certificates', 'dummy-key.pem') },
-    cert_path: { abbr: 'c', full: 'cert-path', help: 'Path to server certificate file (REQUIRED)',
+    cert_path: { abbr: 'c', full: 'cert-path', help: 'Path to server certificate file',
                 default: path.join(__dirname, 'certificates', 'dummy-cert.pem') },
-    external_proxy: { abbr: 'e', full: 'external-proxy', help: 'External proxy of the form http://hostname:port (Optional)' },
+    external_proxy: { abbr: 'e', full: 'external-proxy', help: 'External proxy of the form http://hostname:port' },
     log_level: { abbr: 'l', full: 'log-level', help: "Default: 'info'", default: 'INFO' },
     log_file: { help: 'Log file. (Optional)', full: 'log-file' }
   });
