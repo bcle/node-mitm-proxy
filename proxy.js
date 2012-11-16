@@ -1,9 +1,13 @@
+/*
+ * proxy.js
+ *
+ * Copyright (C) 2012, Bich C. Le, all rights reserved.
+ *
+ */
+
 var https = require('https')
   , http  = require('http')
   , path  = require('path')
-  , fs    = require('fs')
-  , net   = require('net')
-  , EE    = require('events').EventEmitter
   , util  = require('util')
   , request = require('request')
   , log4js = require('log4js')
@@ -27,15 +31,15 @@ function handle_request(that, reqFromApp, respToApp) {
 
   // Buffer app request data
   function onReqFromAppData(chunk) {
-    log.debug('Received chunk from app of size %d', chunk.length);
+    log.trace('Received chunk from app of size %d', chunk.length);
     chunks.push(chunk);
   }
   
   // When full app request is received, forward to remote server
   function onReqFromAppEnd() {
     var body = chunks.length? Buffer.concat(chunks) : null; 
-    log.info('');
-    log.info('Received request from app with body length %d for URL: %s',
+    log.debug('');
+    log.debug('Request: %s body length %d for URL: %s', info.method,
         body? body.length : 0, reqFromApp.url);
     
     reqFromApp.body = body;
@@ -62,8 +66,8 @@ function forward_to_server(that, reqFromApp, respToApp) {
       encoding: null // we want binary
     };
 
-  log.debug('');
-  log.debug('Forwarding to remote server with body length %d and options: %j',
+  log.trace('');
+  log.trace('Forwarding to remote server with body length %d and options: %j',
             body? body.length : 0, remoteOpts);
   remoteOpts.body = body;
   request(remoteOpts, onRespFromRemote);
@@ -74,12 +78,12 @@ function forward_to_server(that, reqFromApp, respToApp) {
       respToApp.writeHead(500, 'Internal error');
       return;
     }
-    log.info('');
-    log.info('Response: status code %d body length %d URL %s',
+    log.debug('');
+    log.debug('Response: status code %d body length %d URL %s',
              respFromRemote.statusCode,
              bodyFromRemote? bodyFromRemote.length : 0,
              reqFromApp.url);
-    log.debug('Response headers: %j', respFromRemote.headers);
+    log.trace('Response headers: %j', respFromRemote.headers);
     respFromRemote.body = bodyFromRemote;    
     
     if (that.options.response_filter)
@@ -99,7 +103,7 @@ function respond_to_app(respFromRemote, respToApp) {
   if (body) {
     var ret = respToApp.write(body);
     if (!ret) 
-      log.warn('write(response body) returned: ' + ret);
+      log.trace('write(response body) returned: ' + ret);
   }
   respToApp.end();
 }
@@ -139,7 +143,7 @@ function handle_connect(that, req, socket, head) {
   var proxy;
 
   if (port != 443) {
-    log.info("Error: CONNECT to non-https server. Aborting.");
+    log.error("Error: CONNECT to non-https server. Aborting.");
     socket.write( "HTTP/1.0 503 Service Unavailable\r\nProxy-agent: Netscape-Proxy/1.1\r\n\r\n");
     return;
   }
@@ -170,7 +174,7 @@ var Proxy = function(options) {
   });
   
   server.on('error', function() {
-    log.info("error on server?")
+    log.debug("error on server?")
   })
 
   server.listen(this.options.proxy_port);
@@ -187,7 +191,8 @@ Proxy.getOptionsParser = function () {
     cert_path: { abbr: 'c', full: 'cert-path', help: 'Path to server certificate file',
                 default: path.join(__dirname, 'certificates', 'dummy-cert.pem') },
     external_proxy: { abbr: 'e', full: 'external-proxy', help: 'External proxy of the form http://hostname:port' },
-    log_level: { abbr: 'l', full: 'log-level', help: "Default: 'info'", default: 'INFO' },
+    keep_temp_files: { full: 'keep-temp-files', flag: true, default: false, help: 'Keep temporary certificate files. Default is false.' },
+    log_level: { abbr: 'l', full: 'log-level', help: "Default: 'debug'", default: 'DEBUG' },
     log_file: { help: 'Log file. (Optional)', full: 'log-file' }
   });
 }

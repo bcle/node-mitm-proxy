@@ -1,3 +1,9 @@
+/*
+ * https_cache.js
+ *
+ * Copyright (C) 2012, Bich C. Le, all rights reserved.
+ *
+ */
 
 var request = require('request');
 var https = require('https');
@@ -9,6 +15,8 @@ var events = require('events');
 var srvCache = {};
 var log = null;
 
+//------------------------------------------------------------------------------------------------
+
 function create_server(certOpts, appRequestCb) {
   var https_srv = https.createServer(certOpts);
   https_srv.on('error', function() {
@@ -18,21 +26,27 @@ function create_server(certOpts, appRequestCb) {
   return https_srv;
 }
 
+//------------------------------------------------------------------------------------------------
+
 function queue_callback(emitter, remoteHostName, cb, appRequestCb) {
-  log.info('Queuing cert lookup for ' + remoteHostName);
+  log.debug('Queuing cert lookup for ' + remoteHostName);
   emitter.on('certDone', function onCertDone(err, server) {
     if (err) {
-      log.info('Dequeuing lookup error for ' + remoteHostName);
+      log.error('Dequeuing lookup error for ' + remoteHostName);
       return cb(err);
     }
-    log.info('Dequeuing cert lookup for ' + remoteHostName);
+    log.debug('Dequeuing cert lookup for ' + remoteHostName);
     cb(null, server);
   });  
 }
 
+//------------------------------------------------------------------------------------------------
+
 exports.init = function(logger) {
   log = logger;
 }
+
+//------------------------------------------------------------------------------------------------
 
 /*
  * Return an https server with the correct certificate for the given hostname.
@@ -45,7 +59,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
   if (entry) {       
     if (entry instanceof https.Server) {
       // The entry is an https server already in the cache
-      log.info('Cache hit for ' + remoteHostName);    
+      log.debug('Cache hit for ' + remoteHostName);    
       return process.nextTick(function () { cb(null, entry); });      
     }
     // Ping in progress. The entry is a plain emitter.
@@ -63,7 +77,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
                       jar: false,
                       method: 'HEAD' };
   
-  log.info("Pinging remote with options: %j", pingOptions);  
+  log.debug("Pinging remote with options: %j", pingOptions);  
   var ping = request(pingOptions, onPingResponse);
   
   function onPingResponse(err, resp, body) {
@@ -71,7 +85,7 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
       delete srvCache[remoteHostName];      
       return emitter.emit('certDone', err);
     }
-    log.info ("Ping response code for %s is %d", url, resp.statusCode);    
+    log.debug ("Ping response code for %s is %d", url, resp.statusCode);    
     
     if (!ping.req.socket.getPeerCertificate) {
       log.error('No certificate for ' + url);
@@ -81,12 +95,12 @@ exports.lookup = function (options, remoteHostName, cb, appRequestCb) {
     }
     
     var srvCert = ping.req.socket.getPeerCertificate();
-    log.debug("Server cert for %s:", url );
-    log.debug("Subject: %j", srvCert.subject);
-    log.debug("Issuer: %j", srvCert.issuer);
+    log.trace("Server cert for %s:", url );
+    log.trace("Subject: %j", srvCert.subject);
+    log.trace("Issuer: %j", srvCert.issuer);
         
     // Generate a new certificate with the same subject as the remote server's certificate
-    cg.generate_cert_buf(remoteHostName, true, srvCert, options.key_path,
+    cg.generate_cert_buf(remoteHostName, options.keep_temp_files, srvCert, options.key_path,
                          options.cert_path, genCertCb);
     
     function genCertCb(err, keyBuf, certBuf) {
