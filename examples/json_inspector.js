@@ -7,22 +7,31 @@
 
 var Proxy = require('../proxy.js')
   , tmp = require('tmp')
-  , fs = require('fs')
-  , qs = require('querystring')
-  , URL = require('url');
+  , fs = require('fs');
 
 var optionsParser = Proxy.getOptionsParser();
+
+// Add your options here. See documentation at https://npmjs.org/package/nomnom
+
+// Determine options from command line
 var options = optionsParser.parse();
+
+// Register filters
 options.request_filter = request_filter;
 options.response_filter = response_filter;
 
 var proxy = new Proxy(options);
+
+// Get log4js logger. 
 var log = proxy.getLogger();
+
 var zlib = require('zlib');
+
+//------------------------------------------------------------------------------------------------
 
 /*
  * reqFromApp: The http request from the client application.
- *             In addition to regular properties, 'body' contains the body buffer.
+ *             In addition to usual properties, 'body' contains the body buffer.
  *             You may modify this object.
  * respToApp: An optional response to the app. If you choose not to forward to the remote server,
  *            use this object to complete the request, and no not call next()
@@ -58,12 +67,15 @@ function request_filter(reqFromApp, respToApp, next) {
   next();
 }
 
+//------------------------------------------------------------------------------------------------
+
 /*
  * reqFromApp: The http request from the client application.
- *             In addition to regular properties, 'body' contains the body buffer.
+ *             In addition to usual properties, 'body' contains the body buffer.
  *             You may modify this object.
- * respToApp: An optional response to the app. If you choose not to forward to the remote server,
- *            use this object to complete the request, and no not call next()
+ * respFromRemote: The response from the remote server. You may modify it.
+ *             If you change the body length, make sure you update the content-length
+ *             header accordingly.
  * next: Call this function to continue processing of the request.
  *       This forwards the (potentially modified) request to the remote server.
  */

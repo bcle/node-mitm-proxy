@@ -1,13 +1,13 @@
-{ "name": "mitm-proxy",
-  "version": "0.0.1",
-  "author": "Horaci Cuevas",
+{ "name": "filtering-proxy",
+  "version": "0.1.0",
+  "author": "Bich C. Le",
   "contributors": [
-    { "name": "Horaci Cuevas", "email": "horaci@gmail.com" }
+    { "name": "Bich C. Le", "email": "bcle00@gmail.com" }
   ],
-  "description" : "A node module to create a http and https man-in-the-middle proxy",
+  "description" : "A man-in-the-middle proxy capable of inspecting and modifying SSL/TLS traffic, with on-the-fly certificate generation",
   "main" : "proxy",
-  "engines" : { "node": ">0.4.0" },
-  "keywords" : [ "proxy", "mitm", "http", "https" ],
+  "engines" : { "node": ">0.8.8" },
+  "keywords" : [ "filter", "proxy", "mitm", "http", "https", "ssl", "certificate" ],
   "dependencies" : {
     "colors" : ">=0.1.0",
     "certgen" : ">=0.2.1",
@@ -18,6 +18,6 @@
   },
   "repository" : { 
     "type": "git", 
-    "url": "http://github.com/horaci/node-mitm-proxy.git"
+    "url": "https://github.com/bcle/filtering-proxy.git"
   }
 }
